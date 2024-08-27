@@ -35,7 +35,6 @@ def print_banner():
     ***************************************
     *         Web Sitesi İndirici         *
     *     Gelişmiş İndirici Versiyonu     *
-    *   @ibrahimsql | GitHub: @ibrahimsql   *
     ***************************************
     """
     print(banner)
@@ -52,49 +51,64 @@ def is_valid_url(url):
     parsed = urlparse(url)
     return bool(parsed.netloc) and bool(parsed.scheme)
 
-def get_page(session, url):
-    try:
-        response = session.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-        # Çerezleri kaydet
-        save_cookies(session.cookies, 'cookies.txt')
-        return response.text
-    except requests.exceptions.RequestException as e:
-        logging.error(f"URL alınırken hata oluştu: {url} - Hata: {e}")
-        return None
+def get_page(session, url, retries=3):
+    """İstenen URL'yi alır ve yanıt döner. Gerekirse yeniden dener."""
+    for attempt in range(retries):
+        try:
+            response = session.get(url, headers=HEADERS, timeout=10)
+            response.raise_for_status()
+            # Çerezleri kaydet
+            save_cookies(session.cookies, 'cookies.txt')
+            return response.text
+        except requests.exceptions.RequestException as e:
+            logging.error(f"URL alınırken hata oluştu: {url} - Hata: {e}")
+            if attempt + 1 < retries:
+                logging.info(f"Yeniden deneme {attempt + 1}/{retries}...")
+                time.sleep(2)
+            else:
+                logging.error(f"URL alınamadı: {url} - {e}")
+                return None
 
 def save_file(session, url, save_path, max_file_size=None, overwrite=False):
-    try:
-        response = session.get(url, headers=HEADERS, stream=True, timeout=10)
-        response.raise_for_status()
-        total_size = int(response.headers.get('content-length', 0))
+    """Dosya indirir ve belirtilen dizine kaydeder."""
+    for attempt in range(3):
+        try:
+            response = session.get(url, headers=HEADERS, stream=True, timeout=10)
+            response.raise_for_status()
+            total_size = int(response.headers.get('content-length', 0))
 
-        if max_file_size and total_size > max_file_size:
-            logging.warning(f"Dosya {url} belirtilen maksimum boyutu ({max_file_size} bayt) aşıyor, atlanıyor.")
-            return False
+            if max_file_size and total_size > max_file_size:
+                logging.warning(f"Dosya {url} belirtilen maksimum boyutu ({max_file_size} bayt) aşıyor, atlanıyor.")
+                return False
 
-        save_path = sanitize_filename(save_path)
+            save_path = sanitize_filename(save_path)
 
-        if os.path.exists(save_path) and not overwrite:
-            logging.info(f"Dosya zaten mevcut: {save_path}, atlanıyor.")
-            return False
+            if os.path.exists(save_path) and not overwrite:
+                logging.info(f"Dosya zaten mevcut: {save_path}, atlanıyor.")
+                return False
 
-        with open(save_path, 'wb') as file, tqdm(
-            desc=save_path,
-            total=total_size,
-            unit='B',
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as bar:
-            for data in response.iter_content(chunk_size=1024):
-                size = file.write(data)
-                bar.update(size)
-        return True
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Dosya indirilemedi: {url} - Hata: {e}")
-        return False
+            with open(save_path, 'wb') as file, tqdm(
+                desc=save_path,
+                total=total_size,
+                unit='B',
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as bar:
+                for data in response.iter_content(chunk_size=1024):
+                    size = file.write(data)
+                    bar.update(size)
+            return True
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Dosya indirilemedi: {url} - Hata: {e}")
+            if attempt + 1 < 3:
+                logging.info(f"Yeniden deneme {attempt + 1}/3...")
+                time.sleep(2)
+            else:
+                logging.error(f"Dosya indirilemedi: {url} - {e}")
+                return False
 
 def parse_and_download(session, url, base_url, save_dir, visited, delay, max_depth, current_depth=0, exclude_types=[], max_file_size=None, overwrite=False, queue=None):
+    """Belirtilen URL'yi analiz eder ve kaynakları indirir."""
     if current_depth > max_depth:
         return
 
@@ -183,6 +197,7 @@ def load_cookies(session, filename):
                 session.cookies.set(name.strip(), value.strip())
 
 def worker(session, queue):
+    """İş parçacığı için işlev, kuyruktan görev alır ve işler."""
     while not queue.empty():
         try:
             url, save_path, max_file_size, overwrite = queue.get()
@@ -282,7 +297,7 @@ def main():
         threads.append(thread)
 
     # Start the download process
-    parse_and_download(session, args.url, args.url, args.dir, visited, args.delay, args.depth if not args.no_recursion else 0, exclude_types, args.max_file_size, args.overwrite, queue)
+    parse_and_download(session, args.url, args.url, args.dir, visited, args.delay, args.depth if not args.no-recursion else 0, exclude_types, args.max_file_size, args.overwrite, queue)
 
     # Wait for all tasks in the queue to be processed
     queue.join()
