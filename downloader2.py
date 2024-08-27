@@ -35,7 +35,7 @@ def print_banner():
     ***************************************
     *         Web Sitesi İndirici         *
     *     Gelişmiş İndirici Versiyonu     *
-    *   @YourName | GitHub: @YourHandle   *
+    *   @ibrahimsql | GitHub: @ibrahimsql   *
     ***************************************
     """
     print(banner)
