@@ -10,37 +10,54 @@ import re
 import threading
 from queue import Queue
 import random
+from fake_useragent import UserAgent
 
-# Logger yapılandırması
+# Logger configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# İstekler için varsayılan başlıklar
+# Dynamic User-Agent for requests
+ua = UserAgent()
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    'User-Agent': ua.random
 }
 
-# User-Agent listesi (rotation için)
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'
+# Extended list of supported file types for web development and common web-related files
+ALL_RESOURCE_TYPES = [
+    '.php', '.php2', '.php3', '.php4', '.php5', '.html', '.htm', '.xhtml', '.css', '.scss', 
+    '.js', '.mjs', '.json', '.asp', '.aspx', '.axd', '.ashx', '.cshtml', '.jsp', '.jspx', 
+    '.java', '.c', '.cpp', '.h', '.cs', '.pl', '.py', '.rb', '.rhtml', '.erb', '.xml', '.xsl',
+    '.xslt', '.svg', '.json', '.yaml', '.yml', '.md', '.txt', '.xml', '.jspa', '.jstl', '.dhtml',
+    '.shtml', '.phtml', '.razor', '.csp', '.jspx', '.md', '.css', '.scss', '.sass', '.less',
+    '.pyc', '.dll', '.cgi', '.pl', '.swift', '.kt', '.jar', '.war', '.ear', '.zip', '.tar', '.gz',
+    '.rar', '.7z', '.bz2', '.dmg', '.iso', '.shar', '.xz', '.pem', '.p7b', '.p7c', '.p12',
+    '.crt', '.cer', '.key', '.der', '.csr', '.eot', '.woff', '.woff2', '.ttf', '.otf', '.psd',
+    '.ai', '.svg', '.bmp', '.gif', '.jpeg', '.jpg', '.png', '.webp', '.ico', '.mp3', '.wav',
+    '.flac', '.mp4', '.avi', '.mov', '.mkv', '.ogv', '.ogx', '.ogm', '.ogv', '.ogg', '.oga',
+    '.webm', '.m4v', '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.odt', 
+    '.ods', '.odp', '.otf', '.otg', '.ott', '.wpd', '.wps', '.xps', '.csv', '.rtf', '.zip',
+    '.tar.gz', '.tar.bz2', '.tgz', '.xz', '.7z', '.rar', '.tar', '.war', '.ear', '.jar'
 ]
 
-# Desteklenen dosya uzantıları
-RESOURCE_TYPES = ['.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2', '.ttf', '.eot', '.otf', '.ico', '.mp4', '.webm', '.ogg', '.mp3', '.wav', '.pdf', '.html', '.htm']
-
 def print_banner():
-    banner = """
-    ***************************************
-    *         Web Sitesi İndirici         *
-    *     Gelişmiş İndirici Versiyonu     *
-    ***************************************
+    # ANSI escape codes for colors
+    RED = '\033[31m'
+    WHITE = '\033[37m'
+    RESET = '\033[0m'
+
+    # Banner design with colors
+    banner = f"""
+{RED} ________       __    _______            __    __    __                
+|  |  |  .-----|  |--|     __.----.---.-|  |--|  |--|  .-----.----.    
+|  |  |  |  -__|  _  |    |  |   _|  _  |  _  |  _  |  |  -__|   _|    
+|________|_____|_____|_______|__| |___._|_____|_____|__|_____|__| {RESET}
+
+{WHITE}Pro Version{RESET}
+{RED}Created by ibrahimsql{RESET}
     """
     print(banner)
 
 def sanitize_filename(filename):
-    """Dosya isimlerindeki geçersiz karakterleri kaldırır."""
+    """Remove invalid characters from filenames."""
     return re.sub(r'[\\/*?:"<>|]', "_", filename)
 
 def make_dirs(path):
@@ -52,25 +69,24 @@ def is_valid_url(url):
     return bool(parsed.netloc) and bool(parsed.scheme)
 
 def get_page(session, url, retries=3):
-    """İstenen URL'yi alır ve yanıt döner. Gerekirse yeniden dener."""
+    """Fetch the requested URL and return the response. Retries if necessary."""
     for attempt in range(retries):
         try:
             response = session.get(url, headers=HEADERS, timeout=10)
             response.raise_for_status()
-            # Çerezleri kaydet
             save_cookies(session.cookies, 'cookies.txt')
             return response.text
         except requests.exceptions.RequestException as e:
-            logging.error(f"URL alınırken hata oluştu: {url} - Hata: {e}")
+            logging.error(f"Error fetching URL: {url} - Error: {e}")
             if attempt + 1 < retries:
-                logging.info(f"Yeniden deneme {attempt + 1}/{retries}...")
+                logging.info(f"Retrying {attempt + 1}/{retries}...")
                 time.sleep(2)
             else:
-                logging.error(f"URL alınamadı: {url} - {e}")
+                logging.error(f"Failed to fetch URL: {url} - {e}")
                 return None
 
 def save_file(session, url, save_path, max_file_size=None, overwrite=False):
-    """Dosya indirir ve belirtilen dizine kaydeder."""
+    """Download a file and save it to the specified directory."""
     for attempt in range(3):
         try:
             response = session.get(url, headers=HEADERS, stream=True, timeout=10)
@@ -78,13 +94,13 @@ def save_file(session, url, save_path, max_file_size=None, overwrite=False):
             total_size = int(response.headers.get('content-length', 0))
 
             if max_file_size and total_size > max_file_size:
-                logging.warning(f"Dosya {url} belirtilen maksimum boyutu ({max_file_size} bayt) aşıyor, atlanıyor.")
+                logging.warning(f"File {url} exceeds max size ({max_file_size} bytes), skipping.")
                 return False
 
             save_path = sanitize_filename(save_path)
 
             if os.path.exists(save_path) and not overwrite:
-                logging.info(f"Dosya zaten mevcut: {save_path}, atlanıyor.")
+                logging.info(f"File already exists: {save_path}, skipping.")
                 return False
 
             with open(save_path, 'wb') as file, tqdm(
@@ -99,16 +115,16 @@ def save_file(session, url, save_path, max_file_size=None, overwrite=False):
                     bar.update(size)
             return True
         except requests.exceptions.RequestException as e:
-            logging.error(f"Dosya indirilemedi: {url} - Hata: {e}")
+            logging.error(f"Failed to download file: {url} - Error: {e}")
             if attempt + 1 < 3:
-                logging.info(f"Yeniden deneme {attempt + 1}/3...")
+                logging.info(f"Retrying {attempt + 1}/3...")
                 time.sleep(2)
             else:
-                logging.error(f"Dosya indirilemedi: {url} - {e}")
+                logging.error(f"Failed to download file: {url} - {e}")
                 return False
 
 def parse_and_download(session, url, base_url, save_dir, visited, delay, max_depth, current_depth=0, exclude_types=[], max_file_size=None, overwrite=False, queue=None):
-    """Belirtilen URL'yi analiz eder ve kaynakları indirir."""
+    """Parse the specified URL and download resources."""
     if current_depth > max_depth:
         return
 
@@ -132,7 +148,6 @@ def parse_and_download(session, url, base_url, save_dir, visited, delay, max_dep
 
     soup = BeautifulSoup(html_content, 'html.parser')
 
-    # Tüm kaynakları bul ve indir
     tags = {
         'img': 'src',
         'script': 'src',
@@ -152,41 +167,38 @@ def parse_and_download(session, url, base_url, save_dir, visited, delay, max_dep
             resource_parsed_url = urlparse(resource_url)
             resource_ext = os.path.splitext(resource_parsed_url.path)[1]
 
-            if resource_ext.lower() in RESOURCE_TYPES or tag == 'a':
+            if resource_ext.lower() in ALL_RESOURCE_TYPES or tag == 'a':
                 if any(resource_ext.lower() == ext for ext in exclude_types):
-                    logging.info(f"Dosya {resource_url} hariç tutulan uzantı ({resource_ext}) nedeniyle atlanıyor.")
+                    logging.info(f"Skipping file {resource_url} due to excluded extension ({resource_ext}).")
                     continue
 
                 resource_path = os.path.join(save_dir, sanitize_filename(resource_parsed_url.path.lstrip('/')))
                 make_dirs(os.path.dirname(resource_path))
 
                 if is_valid_url(resource_url) and resource_url not in visited:
-                    if resource_ext.lower() in RESOURCE_TYPES:
-                        # Dosyayı kaydet, gerekirse yeni bir iş parçacığında
+                    if resource_ext.lower() in ALL_RESOURCE_TYPES:
                         if queue is None:
                             save_file(session, resource_url, resource_path, max_file_size=max_file_size, overwrite=overwrite)
                         else:
                             queue.put((resource_url, resource_path, max_file_size, overwrite))
                     elif tag == 'a':
-                        # Recursive olarak linkleri takip et
                         parse_and_download(session, resource_url, base_url, save_dir, visited, delay, max_depth, current_depth + 1, exclude_types, max_file_size, overwrite, queue)
 
-    # HTML dosyasını kaydet
     save_path = sanitize_filename(save_path)
     with open(save_path, 'w', encoding='utf-8') as file:
         file.write(soup.prettify())
-        logging.info(f"Kaydedildi: {save_path}")
+        logging.info(f"Saved: {save_path}")
 
     time.sleep(delay)
 
 def save_cookies(cookies, filename):
-    """Çerezleri bir dosyaya kaydet."""
+    """Save cookies to a file."""
     with open(filename, 'w') as f:
         for cookie in cookies:
             f.write(f"{cookie.name}={cookie.value}; domain={cookie.domain}; path={cookie.path}\n")
 
 def load_cookies(session, filename):
-    """Bir dosyadan çerezleri yükle ve oturuma ekle."""
+    """Load cookies from a file and add them to the session."""
     if not os.path.exists(filename):
         return
     with open(filename, 'r') as f:
@@ -197,41 +209,42 @@ def load_cookies(session, filename):
                 session.cookies.set(name.strip(), value.strip())
 
 def worker(session, queue):
-    """İş parçacığı için işlev, kuyruktan görev alır ve işler."""
+    """Function for threads to process the queue."""
     while not queue.empty():
         try:
             url, save_path, max_file_size, overwrite = queue.get()
             save_file(session, url, save_path, max_file_size=max_file_size, overwrite=overwrite)
             queue.task_done()
         except Exception as e:
-            logging.error(f"Thread hatası: {e}")
+            logging.error(f"Thread error: {e}")
 
 def main():
     print_banner()
 
-    parser = argparse.ArgumentParser(description='Gelişmiş Web Sitesi İndirici')
-    parser.add_argument('url', help='Hedef web sitesi URL\'si')
-    parser.add_argument('-d', '--dir', default='downloaded_site', help='Kaydedilecek dizin')
-    parser.add_argument('--delay', type=float, default=1.0, help='İstekler arası gecikme süresi (saniye)')
-    parser.add_argument('--depth', type=int, default=1, help='Maksimum tarama derinliği')
-    parser.add_argument('--user-agent', default=HEADERS['User-Agent'], help='Custom User-Agent tanımlama')
-    parser.add_argument('--timeout', type=int, default=10, help='Her istek için zaman aşımı süresi (saniye)')
-    parser.add_argument('--log-file', default=None, help='Logları kaydetmek için dosya yolu')
-    parser.add_argument('--no-recursion', action='store_true', help='Linkleri takip etmeden sadece ana sayfayı indir')
-    parser.add_argument('--include-media', action='store_true', help='Medya dosyalarını (resimler, videolar) indir')
-    parser.add_argument('--exclude-types', type=str, help='Hariç tutulacak dosya uzantılarını belirt (.png,.jpg gibi virgülle ayrılmış)')
-    parser.add_argument('--overwrite', action='store_true', help='Zaten mevcut olan dosyaların üzerine yaz')
-    parser.add_argument('--retry', type=int, default=3, help='Bir isteğin başarısız olması durumunda yeniden deneme sayısı')
-    parser.add_argument('--proxy', type=str, help='Proxy sunucusu (ör. http://proxyserver:port)')
-    parser.add_argument('--headers', type=str, help='İsteğe özel HTTP başlıkları ekle (ör. "Authorization: Bearer token")')
-    parser.add_argument('--cookies', type=str, help='İsteklere özel çerezler ekle (ör. "sessionid=abcd1234; csrftoken=xyz9876")')
-    parser.add_argument('--ignore-certs', action='store_true', help='SSL sertifika hatalarını yoksay')
-    parser.add_argument('--silent', action='store_true', help='Sadece kritik hataları göster (sessiz mod)')
-    parser.add_argument('--max-file-size', type=int, help='İndirilecek dosyanın maksimum boyutunu bayt cinsinden belirt')
-    parser.add_argument('--output-format', type=str, help='Kaydedilen dosyaların adlandırma formatını belirle')
-    parser.add_argument('--auth', type=str, help='HTTP Basic Authentication için kullanıcı adı ve şifre ekle (ör. "username:password")')
-    parser.add_argument('--threads', type=int, default=4, help='Eşzamanlı iş parçacığı sayısı')
-    parser.add_argument('--rate-limit', type=int, default=30, help='Dakikada maksimum istek sayısı')
+    parser = argparse.ArgumentParser(description='Advanced Website Downloader')
+    parser.add_argument('url', help='Target website URL')
+    parser.add_argument('-d', '--dir', default='downloaded_site', help='Directory to save files')
+    parser.add_argument('--delay', type=float, default=1.0, help='Delay between requests (seconds)')
+    parser.add_argument('--depth', type=int, default=1, help='Maximum crawl depth')
+    parser.add_argument('--user-agent', default=HEADERS['User-Agent'], help='Custom User-Agent')
+    parser.add_argument('--timeout', type=int, default=10, help='Timeout for each request (seconds)')
+    parser.add_argument('--log-file', default=None, help='File path to save logs')
+    parser.add_argument('--no-recursion', action='store_true', help='Download only the main page without following links')
+    parser.add_argument('--include-media', action='store_true', help='Download media files (images, videos)')
+    parser.add_argument('--exclude-types', type=str, help='Specify file extensions to exclude (.png,.jpg)')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing files')
+    parser.add_argument('--retry', type=int, default=3, help='Number of retries for a request')
+    parser.add_argument('--proxy', type=str, help='Proxy server (e.g. http://proxyserver:port)')
+    parser.add_argument('--headers', type=str, help='Add custom HTTP headers (e.g. "Authorization: Bearer token")')
+    parser.add_argument('--cookies', type=str, help='Add custom cookies (e.g. "sessionid=abcd1234; csrftoken=xyz9876")')
+    parser.add_argument('--ignore-certs', action='store_true', help='Ignore SSL certificate errors')
+    parser.add_argument('--silent', action='store_true', help='Show only critical errors (silent mode)')
+    parser.add_argument('--max-file-size', type=int, help='Specify maximum file size to download in bytes')
+    parser.add_argument('--output-format', type=str, help='Specify naming format for saved files')
+    parser.add_argument('--auth', type=str, help='Add username and password for HTTP Basic Authentication (e.g. "username:password")')
+    parser.add_argument('--threads', type=int, default=4, help='Number of concurrent threads')
+    parser.add_argument('--rate-limit', type=int, default=30, help='Maximum requests per minute')
+    parser.add_argument('--all', action='store_true', help='Download all web-related file types')
     args = parser.parse_args()
 
     global HEADERS
@@ -247,21 +260,21 @@ def main():
         logging.getLogger().setLevel(logging.CRITICAL)
 
     if not is_valid_url(args.url):
-        logging.error("Geçersiz URL. Lütfen doğru bir URL girin.")
+        logging.error("Invalid URL. Please enter a correct URL.")
         return
 
     make_dirs(args.dir)
     visited = set()
 
+    # Use all file types if --all is specified
+    resource_types = ALL_RESOURCE_TYPES if args.all else []
+
     exclude_types = args.exclude_types.split(',') if args.exclude_types else []
 
-    # Create a session object
     session = requests.Session()
 
-    # Load cookies from file
     load_cookies(session, 'cookies.txt')
 
-    # Apply cookies if provided via command line
     if args.cookies:
         cookies = {}
         for cookie in args.cookies.split(';'):
@@ -269,44 +282,35 @@ def main():
             cookies[key] = value
         session.cookies.update(cookies)
 
-    # Optional proxy configuration
     if args.proxy:
         session.proxies = {"http": args.proxy, "https": args.proxy}
 
-    # Optional SSL verification
     if args.ignore_certs:
         session.verify = False
 
-    # Apply additional headers if provided
     if args.headers:
         for header in args.headers.split(';'):
             key, value = header.strip().split(':', 1)
             HEADERS[key.strip()] = value.strip()
 
-    # Rotate User-Agent
-    HEADERS['User-Agent'] = random.choice(USER_AGENTS)
+    HEADERS['User-Agent'] = random.choice(ua.data_browsers['all'])
 
-    # Create a queue for multithreading
     queue = Queue()
 
-    # Start multiple worker threads
     threads = []
     for _ in range(args.threads):
         thread = threading.Thread(target=worker, args=(session, queue))
         thread.start()
         threads.append(thread)
 
-    # Start the download process
     parse_and_download(session, args.url, args.url, args.dir, visited, args.delay, args.depth if not args.no-recursion else 0, exclude_types, args.max_file_size, args.overwrite, queue)
 
-    # Wait for all tasks in the queue to be processed
     queue.join()
 
-    # Wait for all threads to finish
     for thread in threads:
         thread.join()
 
-    logging.info("Tüm işlemler tamamlandı.")
+    logging.info("All tasks completed.")
 
 if __name__ == '__main__':
     main()
